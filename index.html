@@ -1,0 +1,294 @@
+
+
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {margin: 0;}
+canvas {width: 100%; height: 100%;};
+</style>
+</head>
+
+
+
+
+<body>
+
+<script type="text/javascript" src="js/three.js"></script>
+
+<script>
+/**
+* Created by Jacob Herwick for CSC 461, taught by Professor Benjamin Watson at NCSU.
+* All borrowed assets and code are attributed in this file's documentation.
+*/
+
+//////////////////// Declare variables, initialize the environment, and repeatedly call the update function\\\\\\\\\\\\\\\\\\\\
+
+var camera, scene, renderer, frustumY, frustumX, leftX, rightX,topY, bottomY, player, keyboard, vec, missiles, won;
+
+var asteroidArr = [];
+
+var won = false;
+
+var missiles = [];
+
+var baseDirection = new THREE.Vector3(1, 0, 0);
+
+var clock = new THREE.Clock();
+alert("Commander! We need all hands to the bridge, a rogue squadron of confused asteroids have closed in on us and are not responding to any communication channels. What? No, I suppose we haven't tried morse code...");
+
+initialize();
+requestAnimationFrame(update);
+
+
+/**
+* Uses some code from the first step of https://discoverthreejs.com/, which outlines how to create a three.js environment.
+* Specifically, constructing the camera, scene, and renderer.
+*/
+function initialize() {
+
+//////////////////// Set up camera and such \\\\\\\\\\\\\\\\\\\\
+
+
+// create a Scene
+scene = new THREE.Scene();
+
+// Set the background color
+scene.background = new THREE.Color('black');
+
+// Create a camera
+const fov = 35; // AKA Field of View
+const aspect = window.innerWidth / window.innerHeight;
+const near = 0.1; // the near clipping plane
+const far = 100; // the far clipping plane
+
+camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+
+camera.position.set(0, 0, 10);
+
+// calculate the frustum of the camera and the game plane. Top of the frustum is half of the length because the camera is centered at 0, 0 on the XY plane.
+frustumY = 2.0 * 10 * Math.tan(camera.fov * 0.50 * 0.0174533); // height of the game plane
+frustumX = frustumY * camera.aspect; // width of the game plane
+        
+// Assign values to the edges of the screen, used for the wrapping effect.
+leftX = -1 * (frustumX / 2);
+rightX = frustumX / 2;
+topY = frustumY / 2;
+bottomY = -1 * (frustumY / 2);
+
+// Initialize renderer
+renderer = new THREE.WebGLRenderer();
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+renderer.setPixelRatio(window.devicePixelRatio);
+
+document.body.appendChild(renderer.domElement);
+
+// Create 4 asteroids, 1 at (-3, 0), one at (-3, 1), one at (-3, 2), and one at (-3, 3);
+createAsteroid(0);
+createAsteroid(1);
+createAsteroid(2);
+createAsteroid(3);
+
+// initialize player object, a cone.
+var geometry = new THREE.ConeGeometry(0.2, 0.3, 32);
+    
+var texture = new THREE.TextureLoader().load( 'textures/spaceship.jpg' );
+var material = new THREE.MeshBasicMaterial({map: texture});
+
+player = new THREE.Mesh(geometry, material);
+
+player.position.set(0, 0, 0);
+
+scene.add(player);
+setupKeyControls();
+// The original orientation of the player, took me forever to research how to calculate this!
+vec = new THREE.Vector3(Math.cos(player.rotation.z + 1.5708), Math.sin(player.rotation.z + 1.5708), 0);
+
+}
+
+//////////////////// Creates an asteroid in the game with the given Y value. All asteroids spawn with an x position of -3 to avoid unfair spawn scenarios \\\\\\\\\\\\\\\\\\\\
+function createAsteroid(yPos) {
+    var geometry = new THREE.SphereGeometry(0.2, 16, 8);
+    
+    /*
+    * Asteroid textures courtesy of https://www.solarsystemscope.com/, under the Attribution 4.0 International license (creative commons).
+    * I created modified versions of the texture by running them through a color filter.
+    */
+    var texture = new THREE.TextureLoader().load( 'textures/asteroid.jpg' );
+
+    var material = new THREE.MeshBasicMaterial({map: texture});
+
+    var asteroid = new THREE.Mesh(geometry, material);
+
+    asteroid.position.set(-3, yPos, 0);
+    
+    // Creates an object to store relevant information
+    var ast =  new Object();
+    
+    ast.mesh = asteroid; // the THREE.Mesh object that represents this asteroid
+    ast.health = 5; // how many health points the asteroid has
+    
+    //Gives the asteroid a random direction and modifies it by 1.3 to help ensure that asteroids aren't terribly slow
+    var x = ((Math.random() * 2) - 1) * 1.3;
+    var y = ((Math.random() * 2) - 1) * 1.3;
+    ast.velocity = [x, y]; // x direction, y direction
+    asteroidArr.push(ast);
+    scene.add(asteroid); // add the asteroid to the scene
+}
+
+//////////////////// Where most of the code is called. This function is regularly called to keep the game up-to-date \\\\\\\\\\\\\\\\\\\\
+function update() {
+    // if all asteroids have been destroyed
+    if (asteroidArr.length == 0 && !won) {
+        //alert("We have destroyed the asteroids! But was it worth it? Destroying all of those asteroids without knowing their intentions? Such is the war...");
+        alert("We have destroyed the asteroids! We're stone-cold killers! Humanity will marble at our achievement. Don't take this moment of rest for granite, we have a rocky road ahead of us. But at the same time, don't get too sedimental either...");
+        won = !won;
+        
+    }
+    renderer.render(scene, camera);
+    // check environment for collisions
+    checkCollisions();
+    // retrieve the frame delta
+    var delt = clock.getDelta();
+
+    // handles movement and rotation of asteroids
+    for (var i = 0; i < asteroidArr.length; i++) { // for every asteroid
+        var pos = asteroidArr[i].mesh.position;
+
+
+        
+        
+        if (pos.x < (leftX - 0.2)) {
+            pos.x = rightX + 0.2;
+        }
+        else if (pos.x > (rightX + 0.2)) {
+            pos.x = leftX - 0.2;
+        }
+        else if (pos.y < (bottomY - 0.2)) {
+            pos.y = topY + 0.2;
+        }
+        else if (pos.y > (topY + 0.2)) {
+            pos.y = bottomY - 0.2;
+        }
+        
+        
+        
+        asteroidArr[i].mesh.rotation.x += asteroidArr[i].velocity[0] / 10;
+        asteroidArr[i].mesh.rotation.y += asteroidArr[i].velocity[1] / 10;
+        var newX = pos.x + (delt * asteroidArr[i].velocity[0]);
+        var newY = pos.y + (delt * asteroidArr[i].velocity[1]);
+        asteroidArr[i].mesh.position.set(newX, newY, pos.z); 
+        
+    }
+    // handles movement and aging of missiles
+    for (var j = 0; j < missiles.length; j++) { // for every missile
+        if (missiles[j].age >= 3.00) { // if missile has been in the scene for three seconds
+            scene.remove(missiles[j].mesh)
+            missiles.splice(j, 1); // remove missile at index j
+            
+            continue;
+        }
+        missiles[j].age += delt;
+        missiles[j].mesh.position.addScaledVector(missiles[j].velocityDirection, delt * missiles[j].velocity); // update position
+    }
+    // Recursive call to keep the loop going
+    requestAnimationFrame(update);
+}
+
+//////////////////// Player controls \\\\\\\\\\\\\\\\\\\\
+/**
+* Skeleton of this function was heavily inspired by Three.js Cookbook by Jos Dirksen.
+* https://subscription.packtpub.com/book/web-development/9781783981182/1/ch01lvl1sec22/adding-keyboard-controls
+*/
+function setupKeyControls() {
+     document.onkeydown = function(e) {
+     var delt = clock.getDelta();
+        switch (e.keyCode) {
+            case 65: // A
+            player.rotation.z += 15 * delt;
+            vec = new THREE.Vector3(Math.cos(player.rotation.z + 1.5708), Math.sin(player.rotation.z + 1.5708), 0);
+            break;
+          
+            case 87: // W
+            player.position.addScaledVector(vec, delt * 5);
+            break;
+          
+            case 68: // D
+            player.rotation.z -= 15 * delt;
+            vec = new THREE.Vector3(Math.cos(player.rotation.z + 1.5708), Math.sin(player.rotation.z + 1.5708), 0);
+            break;
+          
+            case 32: // Space
+            fireMissile();
+            break;
+          
+        }
+    };
+}
+    
+//////////////////// Checks if anything has collided with an asteroid \\\\\\\\\\\\\\\\\\\\
+function checkCollisions() {
+    // bound box for the player
+    var playerBox = new THREE.Box3().setFromObject(player);
+    
+    // Loop through every asteroid and check for bound box intersections
+    for (var i = 0; i < asteroidArr.length; i++) { // for every asteroid
+        var asteroidBox = new THREE.Box3().setFromObject(asteroidArr[i].mesh);
+        if (playerBox.intersectsBox(asteroidBox.expandByScalar(-0.17))) {
+            alert("Direct hit! Respawning.");
+            player.position.set(0, 0, 0);
+            player.rotation.set(0, 0, 0);
+            vec = new THREE.Vector3(Math.cos(player.rotation.z + 1.5708), Math.sin(player.rotation.z + 1.5708), 0); // update vec
+        }
+        // loop through every missile and if it collides with an asteroid, lower the asteroid's health, change its color, change its velocity, and destroy the missile
+        for (var j = 0; j < missiles.length; j++) { // Not efficient, but the simplest way to handle collisions between an arbitrary quantity of objects without adding a lot of complexity to my code
+            var missileBox = new THREE.Box3().setFromObject(missiles[j].mesh);
+            if (missileBox.intersectsBox(asteroidBox.expandByScalar(0.02))) {
+                asteroidArr[i].health--;
+                scene.remove(missiles[j].mesh);
+                missiles.splice(j, 1);
+                if (asteroidArr[i].health == 0) {
+                    scene.remove(asteroidArr[i].mesh);
+                    asteroidArr.splice(i, 1);
+                    break;
+                }
+                var newTexture = new THREE.TextureLoader().load( 'textures/asteroid_health' + asteroidArr[i].health + '.jpg' );
+                var newMaterial = new THREE.MeshBasicMaterial({map: newTexture});
+                asteroidArr[i].mesh.material = newMaterial;
+                var x = (Math.random() * 2) - 1;
+                var y = (Math.random() * 2) - 1;
+                asteroidArr[i].velocity = [x + 0.2, y + 0.2]; // gives asteroid a random new direction, scary!
+            }
+            
+        }
+    }
+}
+
+//////////////////// Creates a missile object, similar to createAsteroid \\\\\\\\\\\\\\\\\\\\
+function fireMissile() {
+    var geometry = new THREE.SphereGeometry(0.05, 8, 8);
+    
+
+    var material = new THREE.MeshBasicMaterial({color: 'red'});
+
+    var missile = new THREE.Mesh(geometry, material);
+
+    missile.position.set(player.position.x + (vec.x * 0.3), player.position.y + (vec.y * 0.3), 0); // put missile infront of the player
+    
+    var msl =  new Object();
+    
+    msl.mesh = missile;
+    msl.age = 0; // number of seconds the missile has been in the environment
+    var velocityDirection = vec; // direction the missile is heading in (wherever the player was pointing when this function is called)
+    msl.velocityDirection = velocityDirection;
+    msl.velocity = 1.8; // speed of a missile
+    missiles.push(msl); // add it to the array of missiles in the environment
+    scene.add(missile); // add the missile to the scene
+}
+
+</script>
+
+</body>
+</html>
